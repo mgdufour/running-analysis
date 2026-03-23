@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Michel's Strava Running Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f13; color: #e8e8f0; min-height: 100vh; }
+  
+  header { background: linear-gradient(135deg, #fc4c02 0%, #e03a00 100%); padding: 28px 32px; display: flex; align-items: center; gap: 16px; }
+  header svg { width: 40px; height: 40px; fill: white; opacity: 0.9; }
+  header h1 { font-size: 1.6rem; font-weight: 700; color: white; }
+  header p { color: rgba(255,255,255,0.8); font-size: 0.9rem; margin-top: 2px; }
+
+  .container { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
+  .stat-card { background: #1a1a24; border: 1px solid #2a2a38; border-radius: 14px; padding: 20px; text-align: center; transition: transform 0.15s; }
+  .stat-card:hover { transform: translateY(-2px); }
+  .stat-card .value { font-size: 2rem; font-weight: 800; color: #fc4c02; line-height: 1; }
+  .stat-card .label { font-size: 0.75rem; color: #888; margin-top: 6px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat-card .sub { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .chart-card { background: #1a1a24; border: 1px solid #2a2a38; border-radius: 14px; padding: 22px; }
+  .chart-card.wide { grid-column: 1 / -1; }
+  .chart-card h2 { font-size: 0.95rem; font-weight: 600; color: #ccc; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .chart-wrap { position: relative; width: 100%; }
+
+  .pb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .pb-table th { text-align: left; color: #666; font-weight: 500; padding: 6px 10px; border-bottom: 1px solid #2a2a38; font-size: 0.75rem; text-transform: uppercase; }
+  .pb-table td { padding: 8px 10px; border-bottom: 1px solid #1e1e2a; }
+  .pb-table tr:last-child td { border-bottom: none; }
+  .pb-table .highlight { color: #fc4c02; font-weight: 700; }
+
+  .filter-bar { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; align-items: center; }
+  .filter-bar label { font-size: 0.8rem; color: #888; }
+  .filter-btn { background: #1a1a24; border: 1px solid #2a2a38; color: #ccc; padding: 6px 14px; border-radius: 20px; cursor: pointer; font-size: 0.82rem; transition: all 0.15s; }
+  .filter-btn:hover, .filter-btn.active { background: #fc4c02; border-color: #fc4c02; color: white; }
+
+  @media (max-width: 768px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .chart-card.wide { grid-column: 1; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg viewBox="0 0 24 24"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169"/></svg>
+  <div>
+    <h1>Michel's Running Dashboard</h1>
+    <p>Strava activity analysis · 2021 – 2026</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="stats-grid" id="stats-grid"></div>
+
+  <div class="filter-bar">
+    <label>Show:</label>
+    <button class="filter-btn active" onclick="setYear('all')">All Time</button>
+    <button class="filter-btn" onclick="setYear(2023)">2023</button>
+    <button class="filter-btn" onclick="setYear(2024)">2024</button>
+    <button class="filter-btn" onclick="setYear(2025)">2025</button>
+    <button class="filter-btn" onclick="setYear(2026)">2026</button>
+  </div>
+
+  <div class="charts-grid">
+    <div class="chart-card wide">
+      <h2>📅 Monthly Distance &amp; Run Count</h2>
+      <div class="chart-wrap" style="height:260px">
+        <canvas id="monthlyChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card wide">
+      <h2>🏃 Pace Over Time (min/km)</h2>
+      <div class="chart-wrap" style="height:240px">
+        <canvas id="paceChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h2>❤️ Average Heart Rate Over Time</h2>
+      <div class="chart-wrap" style="height:240px">
+        <canvas id="hrChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h2>📆 Runs by Day of Week</h2>
+      <div class="chart-wrap" style="height:240px">
+        <canvas id="dowChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h2>📏 Run Distance Distribution</h2>
+      <div class="chart-wrap" style="height:240px">
+        <canvas id="distChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h2>🏆 Personal Bests by Year</h2>
+      <table class="pb-table" id="pbTable"></table>
+    </div>
+    <div class="chart-card wide">
+      <h2>⛰️ Monthly Elevation Gain (m)</h2>
+      <div class="chart-wrap" style="height:200px">
+        <canvas id="elevChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const RAW = {"months": ["2021-01", "2021-05", "2021-06", "2023-06", "2023-07", "2023-08", "2023-09", "2024-03", "2024-04", "2024-05", "2024-06", "2024-07", "2024-08", "2024-09", "2024-10", "2024-11", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03"], "month_dist": [6.6, 7.2, 17.1, 9.5, 78.8, 47.2, 22.8, 10.5, 66.1, 56.7, 134.4, 188.3, 131.1, 98.2, 20.1, 5.0, 10.1, 40.1, 109.2, 123.0, 176.9, 183.3, 145.6, 125.1, 124.0, 57.1, 90.8, 107.6, 125.8], "month_count": [2, 2, 4, 2, 12, 5, 1, 2, 9, 8, 17, 18, 13, 8, 4, 1, 2, 7, 18, 16, 18, 15, 16, 14, 16, 9, 13, 14, 14], "month_elev": [13.0, 17.0, 45.0, 23.0, 227.0, 170.0, 155.0, 27.0, 193.0, 168.0, 427.0, 488.0, 353.0, 394.0, 59.0, 10.0, 25.0, 148.0, 338.0, 451.0, 662.0, 683.0, 554.0, 515.0, 569.0, 212.0, 329.0, 415.0, 497.0], "scatter": [{"date": "2021-01-07", "dist": 3.26, "pace": 6.06, "hr": 0.0, "elev": 6.7, "name": "So out of shape.", "cal": 0.0}, {"date": "2021-01-12", "dist": 3.31, "pace": 5.99, "hr": 0.0, "elev": 6.7, "name": "Morning Run", "cal": 0.0}, {"date": "2021-05-25", "dist": 3.07, "pace": 6.45, "hr": 0.0, "elev": 6.6, "name": "Wear socks next time", "cal": 0.0}, {"date": "2021-05-29", "dist": 4.09, "pace": 6.03, "hr": 0.0, "elev": 10.1, "name": "Morning Run", "cal": 0.0}, {"date": "2021-06-04", "dist": 3.59, "pace": 6.36, "hr": 0.0, "elev": 10.1, "name": "Morning Run", "cal": 0.0}, {"date": "2021-06-09", "dist": 4.34, "pace": 6.69, "hr": 0.0, "elev": 8.9, "name": "Afternoon Run", "cal": 0.0}, {"date": "2021-06-12", "dist": 4.72, "pace": 6.6, "hr": 0.0, "elev": 13.1, "name": "Morning Run", "cal": 0.0}, {"date": "2021-06-27", "dist": 4.48, "pace": 6.89, "hr": 0.0, "elev": 12.5, "name": "Lunch Run", "cal": 0.0}, {"date": "2023-06-24", "dist": 3.53, "pace": 6.37, "hr": 0.0, "elev": 10.5, "name": "Morning Run", "cal": 0.0}, {"date": "2023-06-28", "dist": 6.01, "pace": 6.03, "hr": 0.0, "elev": 12.7, "name": "Morning Run", "cal": 0.0}, {"date": "2023-07-02", "dist": 6.53, "pace": 6.42, "hr": 0.0, "elev": 17.4, "name": "Run with dog", "cal": 0.0}, {"date": "2023-07-06", "dist": 5.03, "pace": 6.74, "hr": 0.0, "elev": 12.8, "name": "Heat and chips", "cal": 0.0}, {"date": "2023-07-08", "dist": 5.02, "pace": 6.26, "hr": 0.0, "elev": 12.8, "name": "Night Run", "cal": 569.0}, {"date": "2023-07-09", "dist": 7.03, "pace": 6.27, "hr": 0.0, "elev": 21.0, "name": "Lunch Run", "cal": 797.0}, {"date": "2023-07-11", "dist": 5.03, "pace": 6.07, "hr": 0.0, "elev": 12.8, "name": "Lunch Run", "cal": 570.0}, {"date": "2023-07-13", "dist": 6.03, "pace": 5.95, "hr": 0.0, "elev": 12.8, "name": "Lunch Run", "cal": 683.0}, {"date": "2023-07-16", "dist": 8.02, "pace": 6.59, "hr": 0.0, "elev": 20.2, "name": "Lunch Run", "cal": 909.0}, {"date": "2023-07-19", "dist": 5.03, "pace": 6.45, "hr": 0.0, "elev": 12.8, "name": "Run with dog ", "cal": 569.0}, {"date": "2023-07-20", "dist": 7.02, "pace": 6.45, "hr": 0.0, "elev": 20.7, "name": "Lunch Run", "cal": 797.0}, {"date": "2023-07-23", "dist": 9.03, "pace": 6.52, "hr": 0.0, "elev": 28.7, "name": "Lunch Run", "cal": 1023.0}, {"date": "2023-07-26", "dist": 4.96, "pace": 6.22, "hr": 0.0, "elev": 13.2, "name": "Afternoon Run", "cal": 562.0}, {"date": "2023-07-30", "dist": 10.05, "pace": 6.4, "hr": 0.0, "elev": 42.2, "name": "Morning Run", "cal": 1142.0}, {"date": "2023-08-06", "dist": 11.06, "pace": 6.39, "hr": 0.0, "elev": 40.3, "name": "Morning Run", "cal": 1255.0}, {"date": "2023-08-13", "dist": 12.05, "pace": 6.33, "hr": 0.0, "elev": 46.0, "name": "Lunch Run", "cal": 1368.0}, {"date": "2023-08-15", "dist": 5.03, "pace": 6.4, "hr": 0.0, "elev": 13.8, "name": "Afternoon Run", "cal": 570.0}, {"date": "2023-08-17", "dist": 5.03, "pace": 6.18, "hr": 0.0, "elev": 13.6, "name": "Lunch Run", "cal": 569.0}, {"date": "2023-08-21", "dist": 14.03, "pace": 6.42, "hr": 0.0, "elev": 55.8, "name": "Lunch Run", "cal": 1592.0}, {"date": "2023-09-17", "dist": 22.84, "pace": 6.5, "hr": 0.0, "elev": 155.4, "name": "Morning Run", "cal": 2605.0}, {"date": "2024-03-03", "dist": 5.23, "pace": 5.86, "hr": 0.0, "elev": 13.5, "name": "Lunch Run", "cal": 592.0}, {"date": "2024-03-25", "dist": 5.26, "pace": 5.91, "hr": 0.0, "elev": 13.5, "name": "Lunch Run", "cal": 595.0}, {"date": "2024-04-01", "dist": 5.26, "pace": 5.22, "hr": 0.0, "elev": 13.7, "name": "Morning Run", "cal": 595.0}, {"date": "2024-04-02", "dist": 6.04, "pace": 5.79, "hr": 0.0, "elev": 17.7, "name": "Lunch Run", "cal": 686.0}, {"date": "2024-04-06", "dist": 6.42, "pace": 5.73, "hr": 0.0, "elev": 16.8, "name": "Morning Run", "cal": 728.0}, {"date": "2024-04-07", "dist": 10.03, "pace": 5.84, "hr": 0.0, "elev": 40.4, "name": "Lunch Run", "cal": 1139.0}, {"date": "2024-04-09", "dist": 6.17, "pace": 6.43, "hr": 0.0, "elev": 16.2, "name": "Afternoon Run", "cal": 699.0}, {"date": "2024-04-10", "dist": 7.06, "pace": 6.14, "hr": 0.0, "elev": 20.1, "name": "Afternoon Run", "cal": 800.0}, {"date": "2024-04-13", "dist": 7.06, "pace": 5.91, "hr": 0.0, "elev": 20.0, "name": "Lunch Run", "cal": 802.0}, {"date": "2024-04-14", "dist": 11.03, "pace": 6.03, "hr": 0.0, "elev": 27.3, "name": "Morning Run", "cal": 1251.0}, {"date": "2024-04-16", "dist": 7.05, "pace": 5.91, "hr": 0.0, "elev": 20.3, "name": "Afternoon Run", "cal": 800.0}, {"date": "2024-05-12", "dist": 1.69, "pace": 5.45, "hr": 127.0, "elev": 0.0, "name": "Morning Run", "cal": 124.0}, {"date": "2024-05-13", "dist": 8.41, "pace": 6.86, "hr": 156.0, "elev": 22.0, "name": "Morning Run", "cal": 824.0}, {"date": "2024-05-18", "dist": 12.49, "pace": 5.96, "hr": 155.0, "elev": 43.0, "name": "Morning Run", "cal": 1103.0}, {"date": "2024-05-20", "dist": 7.88, "pace": 7.0, "hr": 136.0, "elev": 24.0, "name": "Evening Run", "cal": 666.0}, {"date": "2024-05-25", "dist": 10.42, "pace": 6.21, "hr": 149.0, "elev": 38.0, "name": "Evening Run", "cal": 885.0}, {"date": "2024-05-27", "dist": 7.03, "pace": 5.75, "hr": 156.0, "elev": 15.0, "name": "Morning Run", "cal": 597.0}, {"date": "2024-05-29", "dist": 3.58, "pace": 6.12, "hr": 146.0, "elev": 11.0, "name": "Afternoon Run", "cal": 300.0}, {"date": "2024-05-31", "dist": 5.17, "pace": 5.85, "hr": 152.0, "elev": 15.0, "name": "Evening Run", "cal": 439.0}, {"date": "2024-06-01", "dist": 9.97, "pace": 6.54, "hr": 137.0, "elev": 28.0, "name": "Morning Run", "cal": 846.0}, {"date": "2024-06-03", "dist": 5.19, "pace": 6.22, "hr": 141.0, "elev": 12.0, "name": "Morning Run", "cal": 434.0}, {"date": "2024-06-05", "dist": 3.26, "pace": 8.49, "hr": 114.0, "elev": 5.0, "name": "Evening Run", "cal": 244.0}, {"date": "2024-06-07", "dist": 6.77, "pace": 6.17, "hr": 138.0, "elev": 11.0, "name": "Afternoon Run", "cal": 561.0}, {"date": "2024-06-08", "dist": 2.87, "pace": 7.39, "hr": 107.0, "elev": 4.0, "name": "Afternoon Run", "cal": 193.0}, {"date": "2024-06-10", "dist": 3.24, "pace": 5.39, "hr": 149.0, "elev": 7.0, "name": "Lunch Run", "cal": 256.0}, {"date": "2024-06-12", "dist": 5.94, "pace": 5.52, "hr": 150.0, "elev": 13.0, "name": "Afternoon Run", "cal": 485.0}, {"date": "2024-06-14", "dist": 5.27, "pace": 6.31, "hr": 145.0, "elev": 15.0, "name": "Afternoon Run", "cal": 457.0}, {"date": "2024-06-15", "dist": 13.24, "pace": 6.4, "hr": 136.0, "elev": 17.0, "name": "Lunch Run", "cal": 1096.0}, {"date": "2024-06-17", "dist": 7.06, "pace": 6.04, "hr": 142.0, "elev": 11.0, "name": "Morning Run", "cal": 584.0}, {"date": "2024-06-19", "dist": 6.71, "pace": 6.39, "hr": 150.0, "elev": 23.0, "name": "Lunch Run", "cal": 609.0}, {"date": "2024-06-21", "dist": 7.11, "pace": 6.41, "hr": 138.0, "elev": 22.0, "name": "Afternoon Run", "cal": 591.0}, {"date": "2024-06-22", "dist": 16.61, "pace": 5.97, "hr": 149.0, "elev": 59.0, "name": "Afternoon Run", "cal": 1418.0}, {"date": "2024-06-24", "dist": 8.5, "pace": 6.21, "hr": 140.0, "elev": 32.0, "name": "Morning Run", "cal": 709.0}, {"date": "2024-06-26", "dist": 7.5, "pace": 6.35, "hr": 141.0, "elev": 77.0, "name": "Lunch Run", "cal": 629.0}, {"date": "2024-06-28", "dist": 6.79, "pace": 6.55, "hr": 138.0, "elev": 30.0, "name": "Afternoon Run", "cal": 579.0}, {"date": "2024-06-29", "dist": 18.37, "pace": 6.5, "hr": 142.0, "elev": 61.0, "name": "Afternoon Run", "cal": 1539.0}, {"date": "2024-07-01", "dist": 9.18, "pace": 6.14, "hr": 144.0, "elev": 44.0, "name": "Morning Run", "cal": 777.0}, {"date": "2024-07-03", "dist": 8.42, "pace": 6.44, "hr": 143.0, "elev": 14.0, "name": "Afternoon Run", "cal": 699.0}, {"date": "2024-07-05", "dist": 7.58, "pace": 6.51, "hr": 141.0, "elev": 15.0, "name": "Afternoon Run", "cal": 655.0}, {"date": "2024-07-06", "dist": 16.37, "pace": 6.46, "hr": 139.0, "elev": 30.0, "name": "Morning Run", "cal": 1388.0}, {"date": "2024-07-08", "dist": 8.38, "pace": 6.22, "hr": 141.0, "elev": 18.0, "name": "Morning Run", "cal": 700.0}, {"date": "2024-07-10", "dist": 5.89, "pace": 5.73, "hr": 143.0, "elev": 14.0, "name": "Afternoon Run", "cal": 477.0}, {"date": "2024-07-12", "dist": 6.78, "pace": 6.16, "hr": 152.0, "elev": 13.0, "name": "Lunch Run", "cal": 594.0}, {"date": "2024-07-13", "dist": 19.76, "pace": 6.71, "hr": 155.0, "elev": 35.0, "name": "Morning Run", "cal": 1772.0}, {"date": "2024-07-15", "dist": 9.99, "pace": 6.42, "hr": 139.0, "elev": 26.0, "name": "Morning Run", "cal": 846.0}, {"date": "2024-07-17", "dist": 8.57, "pace": 6.46, "hr": 125.0, "elev": 13.0, "name": "Morning Run", "cal": 659.0}, {"date": "2024-07-19", "dist": 6.77, "pace": 5.61, "hr": 150.0, "elev": 15.0, "name": "Evening Run", "cal": 552.0}, {"date": "2024-07-20", "dist": 16.41, "pace": 6.38, "hr": 135.0, "elev": 61.0, "name": "Morning Run", "cal": 1358.0}, {"date": "2024-07-22", "dist": 8.33, "pace": 6.15, "hr": 137.0, "elev": 13.0, "name": "Morning Run", "cal": 686.0}, {"date": "2024-07-24", "dist": 9.42, "pace": 6.48, "hr": 131.0, "elev": 22.0, "name": "Morning Run", "cal": 741.0}, {"date": "2024-07-26", "dist": 6.8, "pace": 5.95, "hr": 134.0, "elev": 13.0, "name": "Morning Run", "cal": 542.0}, {"date": "2024-07-27", "dist": 21.24, "pace": 6.44, "hr": 146.0, "elev": 80.0, "name": "Morning Run", "cal": 1877.0}, {"date": "2024-07-29", "dist": 10.76, "pace": 5.96, "hr": 150.0, "elev": 47.0, "name": "Morning Run", "cal": 935.0}, {"date": "2024-07-31", "dist": 7.67, "pace": 5.92, "hr": 143.0, "elev": 15.0, "name": "Morning Run", "cal": 600.0}, {"date": "2024-08-02", "dist": 7.66, "pace": 6.04, "hr": 143.0, "elev": 14.0, "name": "Morning Run", "cal": 626.0}, {"date": "2024-08-04", "dist": 16.63, "pace": 6.54, "hr": 142.0, "elev": 41.0, "name": "Morning Run", "cal": 1417.0}, {"date": "2024-08-05", "dist": 8.35, "pace": 6.18, "hr": 127.0, "elev": 20.0, "name": "Afternoon Run", "cal": 649.0}, {"date": "2024-08-07", "dist": 12.23, "pace": 6.36, "hr": 136.0, "elev": 26.0, "name": "Morning Run", "cal": 950.0}, {"date": "2024-08-10", "dist": 23.03, "pace": 6.71, "hr": 142.0, "elev": 55.0, "name": "Morning Run", "cal": 1956.0}, {"date": "2024-08-16", "dist": 6.82, "pace": 6.76, "hr": 134.0, "elev": 15.0, "name": "Evening Run", "cal": 571.0}, {"date": "2024-08-18", "dist": 13.21, "pace": 6.36, "hr": 147.0, "elev": 46.0, "name": "Morning Run", "cal": 1152.0}, {"date": "2024-08-19", "dist": 6.82, "pace": 5.79, "hr": 136.0, "elev": 14.0, "name": "Afternoon Run", "cal": 530.0}, {"date": "2024-08-21", "dist": 8.78, "pace": 5.89, "hr": 138.0, "elev": 22.0, "name": "Lunch Run", "cal": 691.0}, {"date": "2024-08-23", "dist": 6.79, "pace": 5.7, "hr": 148.0, "elev": 20.0, "name": "Afternoon Run", "cal": 553.0}, {"date": "2024-08-25", "dist": 9.98, "pace": 5.77, "hr": 160.0, "elev": 42.0, "name": "Morning Run", "cal": 880.0}, {"date": "2024-08-27", "dist": 5.65, "pace": 5.15, "hr": 133.0, "elev": 27.0, "name": "Night Run", "cal": 395.0}, {"date": "2024-08-30", "dist": 5.19, "pace": 6.12, "hr": 125.0, "elev": 11.0, "name": "Lunch Run", "cal": 404.0}, {"date": "2024-09-01", "dist": 22.86, "pace": 6.19, "hr": 153.0, "elev": 96.0, "name": "Morning Run", "cal": 2062.0}, {"date": "2024-09-02", "dist": 11.66, "pace": 5.23, "hr": 136.0, "elev": 36.0, "name": "Morning Run", "cal": 856.0}, {"date": "2024-09-11", "dist": 11.6, "pace": 6.54, "hr": 142.0, "elev": 28.0, "name": "Afternoon Run", "cal": 967.0}, {"date": "2024-09-13", "dist": 10.02, "pace": 5.58, "hr": 152.0, "elev": 35.0, "name": "Lunch Run", "cal": 876.0}, {"date": "2024-09-15", "dist": 10.05, "pace": 5.63, "hr": 150.0, "elev": 46.0, "name": "Morning Run", "cal": 827.0}, {"date": "2024-09-17", "dist": 5.18, "pace": 5.69, "hr": 147.0, "elev": 13.0, "name": "Lunch Run", "cal": 423.0}, {"date": "2024-09-18", "dist": 5.28, "pace": 5.33, "hr": 151.0, "elev": 15.0, "name": "Morning Run", "cal": 428.0}, {"date": "2024-09-22", "dist": 21.51, "pace": 5.41, "hr": 157.0, "elev": 125.0, "name": "Morning Run", "cal": 1771.0}, {"date": "2024-10-18", "dist": 5.03, "pace": 5.38, "hr": 136.0, "elev": 16.0, "name": "Lunch Run", "cal": 377.0}, {"date": "2024-10-24", "dist": 5.02, "pace": 5.55, "hr": 135.0, "elev": 15.0, "name": "Lunch Run", "cal": 399.0}, {"date": "2024-10-30", "dist": 5.02, "pace": 4.88, "hr": 139.0, "elev": 15.0, "name": "Afternoon Run", "cal": 364.0}, {"date": "2024-10-31", "dist": 5.03, "pace": 5.05, "hr": 125.0, "elev": 13.0, "name": "Lunch Run", "cal": 348.0}, {"date": "2024-11-18", "dist": 5.02, "pace": 4.65, "hr": 134.0, "elev": 10.0, "name": "Lunch Run", "cal": 348.0}, {"date": "2025-03-16", "dist": 5.01, "pace": 5.15, "hr": 131.0, "elev": 11.0, "name": "Morning Run", "cal": 386.0}, {"date": "2025-03-18", "dist": 5.06, "pace": 4.9, "hr": 136.0, "elev": 14.0, "name": "Lunch Run", "cal": 393.0}, {"date": "2025-04-12", "dist": 5.02, "pace": 4.89, "hr": 128.0, "elev": 14.0, "name": "Morning Run", "cal": 375.0}, {"date": "2025-04-14", "dist": 5.01, "pace": 4.72, "hr": 141.0, "elev": 16.0, "name": "Lunch Run", "cal": 400.0}, {"date": "2025-04-23", "dist": 5.02, "pace": 4.69, "hr": 118.0, "elev": 31.0, "name": "Afternoon Run", "cal": 338.0}, {"date": "2025-04-25", "dist": 5.03, "pace": 4.77, "hr": 157.0, "elev": 9.0, "name": "Afternoon Run", "cal": 443.0}, {"date": "2025-04-27", "dist": 10.01, "pace": 5.2, "hr": 137.0, "elev": 51.0, "name": "Lunch Run", "cal": 795.0}, {"date": "2025-04-28", "dist": 5.02, "pace": 4.89, "hr": 161.0, "elev": 12.0, "name": "Afternoon Run", "cal": 437.0}, {"date": "2025-04-30", "dist": 5.02, "pace": 4.94, "hr": 143.0, "elev": 15.0, "name": "Morning Run", "cal": 388.0}, {"date": "2025-05-02", "dist": 5.02, "pace": 4.53, "hr": 142.0, "elev": 13.0, "name": "Morning Run", "cal": 366.0}, {"date": "2025-05-04", "dist": 10.01, "pace": 5.48, "hr": 135.0, "elev": 42.0, "name": "Morning Run", "cal": 799.0}, {"date": "2025-05-05", "dist": 5.06, "pace": 5.2, "hr": 131.0, "elev": 11.0, "name": "Afternoon Run", "cal": 385.0}, {"date": "2025-05-08", "dist": 1.93, "pace": 4.78, "hr": 131.0, "elev": 7.0, "name": "Night Run", "cal": 135.0}, {"date": "2025-05-10", "dist": 5.21, "pace": 5.35, "hr": 153.0, "elev": 16.0, "name": "Lunch Run", "cal": 438.0}, {"date": "2025-05-11", "dist": 8.44, "pace": 5.24, "hr": 146.0, "elev": 31.0, "name": "Morning Run", "cal": 669.0}, {"date": "2025-05-12", "dist": 4.44, "pace": 5.19, "hr": 149.0, "elev": 12.0, "name": "Afternoon Run", "cal": 354.0}, {"date": "2025-05-15", "dist": 3.6, "pace": 5.38, "hr": 129.0, "elev": 11.0, "name": "Evening Run", "cal": 261.0}, {"date": "2025-05-16", "dist": 5.19, "pace": 5.22, "hr": 147.0, "elev": 11.0, "name": "Morning Run", "cal": 407.0}, {"date": "2025-05-17", "dist": 9.94, "pace": 5.18, "hr": 145.0, "elev": 32.0, "name": "Lunch Run", "cal": 773.0}, {"date": "2025-05-19", "dist": 5.21, "pace": 5.31, "hr": 130.0, "elev": 23.0, "name": "Morning Run", "cal": 379.0}, {"date": "2025-05-21", "dist": 3.6, "pace": 5.07, "hr": 130.0, "elev": 12.0, "name": "Afternoon Run", "cal": 252.0}, {"date": "2025-05-23", "dist": 5.21, "pace": 5.11, "hr": 154.0, "elev": 12.0, "name": "Afternoon Run", "cal": 427.0}, {"date": "2025-05-24", "dist": 10.08, "pace": 5.39, "hr": 151.0, "elev": 25.0, "name": "Morning Run", "cal": 824.0}, {"date": "2025-05-26", "dist": 5.2, "pace": 4.84, "hr": 143.0, "elev": 16.0, "name": "Afternoon Run", "cal": 383.0}, {"date": "2025-05-28", "dist": 5.02, "pace": 4.49, "hr": 156.0, "elev": 9.0, "name": "Afternoon Run", "cal": 372.0}, {"date": "2025-05-30", "dist": 5.56, "pace": 4.83, "hr": 155.0, "elev": 13.0, "name": "Afternoon Run", "cal": 428.0}, {"date": "2025-05-31", "dist": 10.48, "pace": 4.92, "hr": 147.0, "elev": 42.0, "name": "Lunch Run", "cal": 782.0}, {"date": "2025-06-02", "dist": 5.59, "pace": 4.97, "hr": 146.0, "elev": 17.0, "name": "Afternoon Run", "cal": 421.0}, {"date": "2025-06-04", "dist": 5.6, "pace": 4.83, "hr": 155.0, "elev": 13.0, "name": "Evening Run", "cal": 429.0}, {"date": "2025-06-05", "dist": 7.07, "pace": 4.99, "hr": 149.0, "elev": 16.0, "name": "Lunch Run", "cal": 537.0}, {"date": "2025-06-08", "dist": 13.43, "pace": 5.08, "hr": 152.0, "elev": 65.0, "name": "Morning Run", "cal": 1035.0}, {"date": "2025-06-10", "dist": 7.27, "pace": 4.9, "hr": 148.0, "elev": 20.0, "name": "Afternoon Run", "cal": 538.0}, {"date": "2025-06-11", "dist": 4.25, "pace": 4.42, "hr": 141.0, "elev": 15.0, "name": "Afternoon Run", "cal": 272.0}, {"date": "2025-06-13", "dist": 5.6, "pace": 4.56, "hr": 150.0, "elev": 19.0, "name": "Afternoon Run", "cal": 400.0}, {"date": "2025-06-15", "dist": 10.45, "pace": 4.88, "hr": 160.0, "elev": 39.0, "name": "Lunch Run", "cal": 813.0}, {"date": "2025-06-17", "dist": 5.64, "pace": 4.67, "hr": 158.0, "elev": 13.0, "name": "Evening Run", "cal": 421.0}, {"date": "2025-06-18", "dist": 3.3, "pace": 4.68, "hr": 149.0, "elev": 11.0, "name": "Lunch Run", "cal": 237.0}, {"date": "2025-06-20", "dist": 7.21, "pace": 4.95, "hr": 154.0, "elev": 22.0, "name": "Lunch Run", "cal": 547.0}, {"date": "2025-06-22", "dist": 13.57, "pace": 5.3, "hr": 159.0, "elev": 74.0, "name": "Morning Run", "cal": 1097.0}, {"date": "2025-06-23", "dist": 7.14, "pace": 5.44, "hr": 141.0, "elev": 15.0, "name": "Morning Run", "cal": 546.0}, {"date": "2025-06-25", "dist": 2.88, "pace": 4.78, "hr": 136.0, "elev": 12.0, "name": "Morning Run", "cal": 193.0}, {"date": "2025-06-27", "dist": 7.19, "pace": 4.96, "hr": 149.0, "elev": 13.0, "name": "Morning Run", "cal": 536.0}, {"date": "2025-06-29", "dist": 16.81, "pace": 4.93, "hr": 160.0, "elev": 87.0, "name": "Morning Run", "cal": 1316.0}, {"date": "2025-07-01", "dist": 8.76, "pace": 5.11, "hr": 148.0, "elev": 18.0, "name": "Morning Run", "cal": 663.0}, {"date": "2025-07-02", "dist": 6.4, "pace": 4.89, "hr": 156.0, "elev": 16.0, "name": "Afternoon Run", "cal": 485.0}, {"date": "2025-07-04", "dist": 5.62, "pace": 4.95, "hr": 150.0, "elev": 19.0, "name": "Afternoon Run", "cal": 421.0}, {"date": "2025-07-05", "dist": 13.62, "pace": 4.94, "hr": 155.0, "elev": 76.0, "name": "Morning Run", "cal": 1028.0}, {"date": "2025-07-07", "dist": 7.17, "pace": 5.14, "hr": 132.0, "elev": 16.0, "name": "Afternoon Run", "cal": 497.0}, {"date": "2025-07-09", "dist": 7.18, "pace": 4.82, "hr": 158.0, "elev": 18.0, "name": "Afternoon Run", "cal": 541.0}, {"date": "2025-07-11", "dist": 7.23, "pace": 5.04, "hr": 153.0, "elev": 16.0, "name": "Afternoon Run", "cal": 549.0}, {"date": "2025-07-13", "dist": 16.71, "pace": 6.01, "hr": 147.0, "elev": 59.0, "name": "Morning Run", "cal": 1351.0}, {"date": "2025-07-14", "dist": 8.76, "pace": 5.47, "hr": 144.0, "elev": 28.0, "name": "Morning Run", "cal": 679.0}, {"date": "2025-07-16", "dist": 9.12, "pace": 5.0, "hr": 156.0, "elev": 35.0, "name": "Lunch Run", "cal": 701.0}, {"date": "2025-07-18", "dist": 7.22, "pace": 5.0, "hr": 142.0, "elev": 28.0, "name": "Morning Run", "cal": 518.0}, {"date": "2025-07-20", "dist": 18.4, "pace": 5.61, "hr": 150.0, "elev": 70.0, "name": "Afternoon Run", "cal": 1467.0}, {"date": "2025-07-21", "dist": 9.6, "pace": 5.23, "hr": 150.0, "elev": 55.0, "name": "Lunch Run", "cal": 732.0}, {"date": "2025-07-23", "dist": 10.59, "pace": 4.95, "hr": 156.0, "elev": 24.0, "name": "Afternoon Run - Speed Repeats", "cal": 803.0}, {"date": "2025-07-25", "dist": 7.98, "pace": 5.29, "hr": 143.0, "elev": 24.0, "name": "Morning Run", "cal": 600.0}, {"date": "2025-07-27", "dist": 16.72, "pace": 5.98, "hr": 153.0, "elev": 111.0, "name": "Afternoon Run", "cal": 1385.0}, {"date": "2025-07-29", "dist": 8.89, "pace": 4.52, "hr": 161.0, "elev": 29.0, "name": "Morning Run - Tired Run", "cal": 652.0}, {"date": "2025-07-31", "dist": 6.9, "pace": 5.51, "hr": 133.0, "elev": 20.0, "name": "Morning Run - Time Trial!", "cal": 500.0}, {"date": "2025-08-01", "dist": 7.13, "pace": 5.54, "hr": 136.0, "elev": 26.0, "name": "Lunch Run - Easy Run", "cal": 540.0}, {"date": "2025-08-04", "dist": 20.04, "pace": 5.74, "hr": 139.0, "elev": 95.0, "name": "Afternoon Run", "cal": 1531.0}, {"date": "2025-08-06", "dist": 10.43, "pace": 5.18, "hr": 153.0, "elev": 36.0, "name": "Morning Run - Speed Repeats", "cal": 798.0}, {"date": "2025-08-08", "dist": 7.15, "pace": 5.65, "hr": 136.0, "elev": 14.0, "name": "Evening Run - Easy run.", "cal": 547.0}, {"date": "2025-08-09", "dist": 16.57, "pace": 5.74, "hr": 142.0, "elev": 91.0, "name": "Evening Run", "cal": 1281.0}, {"date": "2025-08-11", "dist": 8.81, "pace": 4.72, "hr": 158.0, "elev": 32.0, "name": "Morning Run - Tired Run", "cal": 656.0}, {"date": "2025-08-18", "dist": 11.29, "pace": 4.77, "hr": 123.0, "elev": 40.0, "name": "Lunch Run - Tired Run", "cal": 731.0}, {"date": "2025-08-19", "dist": 7.96, "pace": 4.88, "hr": 148.0, "elev": 19.0, "name": "Lunch Run - Time Trial & Intervals", "cal": 584.0}, {"date": "2025-08-22", "dist": 7.18, "pace": 5.42, "hr": 141.0, "elev": 19.0, "name": "Evening Run - Easy Run", "cal": 553.0}, {"date": "2025-08-24", "dist": 23.21, "pace": 5.72, "hr": 141.0, "elev": 96.0, "name": "Morning Run", "cal": 1798.0}, {"date": "2025-08-25", "dist": 12.1, "pace": 4.86, "hr": 153.0, "elev": 44.0, "name": "Afternoon Run - Tired Run", "cal": 906.0}, {"date": "2025-08-27", "dist": 16.0, "pace": 5.04, "hr": 152.0, "elev": 38.0, "name": "Afternoon Run - Speed Repeats", "cal": 1218.0}, {"date": "2025-08-28", "dist": 14.68, "pace": 4.42, "hr": 157.0, "elev": 37.0, "name": "Glen Tay Block Race", "cal": 1044.0}, {"date": "2025-08-29", "dist": 7.19, "pace": 5.45, "hr": 132.0, "elev": 25.0, "name": "Lunch Run - Easy Run", "cal": 528.0}, {"date": "2025-08-31", "dist": 13.52, "pace": 5.67, "hr": 137.0, "elev": 71.0, "name": "Lunch Run", "cal": 1032.0}, {"date": "2025-09-01", "dist": 7.2, "pace": 4.77, "hr": 155.0, "elev": 22.0, "name": "Morning Run - Tired Run", "cal": 535.0}, {"date": "2025-09-03", "dist": 9.92, "pace": 4.9, "hr": 150.0, "elev": 25.0, "name": "Evening Run - Speed Repeats", "cal": 737.0}, {"date": "2025-09-06", "dist": 7.24, "pace": 4.9, "hr": 141.0, "elev": 22.0, "name": "Morning Run - Easy Run", "cal": 518.0}, {"date": "2025-09-07", "dist": 10.48, "pace": 4.86, "hr": 147.0, "elev": 34.0, "name": "Morning Run", "cal": 768.0}, {"date": "2025-09-08", "dist": 5.67, "pace": 4.54, "hr": 134.0, "elev": 30.0, "name": "Morning Run - Tired Run", "cal": 368.0}, {"date": "2025-09-10", "dist": 5.48, "pace": 4.62, "hr": 152.0, "elev": 11.0, "name": "Afternoon Run - Speed Repeats", "cal": 402.0}, {"date": "2025-09-12", "dist": 10.39, "pace": 5.47, "hr": 143.0, "elev": 30.0, "name": "Afternoon Run - Easy Run", "cal": 822.0}, {"date": "2025-09-13", "dist": 10.39, "pace": 5.44, "hr": 145.0, "elev": 27.0, "name": "Afternoon Run - Easy Run", "cal": 823.0}, {"date": "2025-09-15", "dist": 5.74, "pace": 4.33, "hr": 157.0, "elev": 20.0, "name": "Lunch Run - Tired Run", "cal": 410.0}, {"date": "2025-09-17", "dist": 5.46, "pace": 4.76, "hr": 138.0, "elev": 18.0, "name": "Evening Run - Speed Repeats", "cal": 380.0}, {"date": "2025-09-21", "dist": 21.26, "pace": 4.55, "hr": 167.0, "elev": 122.0, "name": "Army Run", "cal": 1665.0}, {"date": "2025-09-24", "dist": 7.5, "pace": 5.35, "hr": 145.0, "elev": 19.0, "name": "Evening Run", "cal": 583.0}, {"date": "2025-09-26", "dist": 9.48, "pace": 5.21, "hr": 151.0, "elev": 32.0, "name": "Morning Run", "cal": 737.0}, {"date": "2025-09-27", "dist": 6.85, "pace": 5.57, "hr": 144.0, "elev": 22.0, "name": "Afternoon Run", "cal": 544.0}, {"date": "2025-09-28", "dist": 15.67, "pace": 5.95, "hr": 143.0, "elev": 97.0, "name": "Afternoon Run", "cal": 1280.0}, {"date": "2025-09-29", "dist": 6.85, "pace": 5.57, "hr": 144.0, "elev": 23.0, "name": "Lunch Run - Base", "cal": 540.0}, {"date": "2025-10-01", "dist": 10.11, "pace": 5.48, "hr": 141.0, "elev": 34.0, "name": "Morning Run - Sprints", "cal": 769.0}, {"date": "2025-10-02", "dist": 6.92, "pace": 5.51, "hr": 141.0, "elev": 19.0, "name": "Afternoon Run - Base run", "cal": 540.0}, {"date": "2025-10-03", "dist": 6.27, "pace": 6.08, "hr": 141.0, "elev": 18.0, "name": "Lunch Run - Base", "cal": 510.0}, {"date": "2025-10-04", "dist": 16.66, "pace": 5.89, "hr": 135.0, "elev": 95.0, "name": "Morning Run - Base Long Run", "cal": 1305.0}, {"date": "2025-10-06", "dist": 6.22, "pace": 5.85, "hr": 139.0, "elev": 54.0, "name": "Morning Run", "cal": 516.0}, {"date": "2025-10-07", "dist": 8.22, "pace": 5.19, "hr": 135.0, "elev": 14.0, "name": "Afternoon Run", "cal": 596.0}, {"date": "2025-10-08", "dist": 6.57, "pace": 5.41, "hr": 147.0, "elev": 34.0, "name": "Afternoon Run", "cal": 527.0}, {"date": "2025-10-12", "dist": 16.02, "pace": 5.83, "hr": 149.0, "elev": 112.0, "name": "Lunch Run", "cal": 1359.0}, {"date": "2025-10-14", "dist": 7.8, "pace": 5.79, "hr": 142.0, "elev": 23.0, "name": "Lunch Run - Base", "cal": 624.0}, {"date": "2025-10-15", "dist": 8.83, "pace": 6.13, "hr": 139.0, "elev": 26.0, "name": "Evening Run", "cal": 715.0}, {"date": "2025-10-17", "dist": 10.12, "pace": 5.34, "hr": 141.0, "elev": 29.0, "name": "Afternoon Run - Tempos!", "cal": 761.0}, {"date": "2025-10-25", "dist": 6.44, "pace": 4.99, "hr": 135.0, "elev": 22.0, "name": "Morning Run", "cal": 451.0}, {"date": "2025-10-27", "dist": 8.89, "pace": 5.77, "hr": 139.0, "elev": 29.0, "name": "Afternoon Run", "cal": 727.0}, {"date": "2025-10-28", "dist": 6.04, "pace": 7.93, "hr": 104.0, "elev": 6.0, "name": "Afternoon Run", "cal": 408.0}, {"date": "2025-11-02", "dist": 9.99, "pace": 5.9, "hr": 133.0, "elev": 62.0, "name": "Morning Run", "cal": 771.0}, {"date": "2025-11-06", "dist": 5.04, "pace": 5.5, "hr": 133.0, "elev": 20.0, "name": "Afternoon Run", "cal": 383.0}, {"date": "2025-11-09", "dist": 5.02, "pace": 5.22, "hr": 131.0, "elev": 19.0, "name": "Morning Run", "cal": 360.0}, {"date": "2025-11-10", "dist": 5.03, "pace": 5.31, "hr": 136.0, "elev": 20.0, "name": "Lunch Run", "cal": 383.0}, {"date": "2025-11-12", "dist": 6.4, "pace": 5.53, "hr": 142.0, "elev": 15.0, "name": "Afternoon Run", "cal": 516.0}, {"date": "2025-11-15", "dist": 9.98, "pace": 5.52, "hr": 118.0, "elev": 41.0, "name": "Afternoon Run", "cal": 696.0}, {"date": "2025-11-16", "dist": 5.03, "pace": 5.81, "hr": 134.0, "elev": 24.0, "name": "Lunch Run", "cal": 399.0}, {"date": "2025-11-18", "dist": 7.0, "pace": 5.01, "hr": 154.0, "elev": 25.0, "name": "Lunch Run", "cal": 549.0}, {"date": "2025-11-19", "dist": 6.13, "pace": 5.29, "hr": 135.0, "elev": 19.0, "name": "Afternoon Run", "cal": 455.0}, {"date": "2025-11-20", "dist": 5.15, "pace": 5.82, "hr": 133.0, "elev": 16.0, "name": "Afternoon Run", "cal": 405.0}, {"date": "2025-11-23", "dist": 15.25, "pace": 5.83, "hr": 139.0, "elev": 91.0, "name": "Morning Run", "cal": 1244.0}, {"date": "2025-11-25", "dist": 6.08, "pace": 5.29, "hr": 140.0, "elev": 16.0, "name": "Morning Run", "cal": 467.0}, {"date": "2025-11-27", "dist": 8.72, "pace": 5.62, "hr": 136.0, "elev": 45.0, "name": "Lunch Run", "cal": 672.0}, {"date": "2025-11-28", "dist": 6.49, "pace": 5.87, "hr": 143.0, "elev": 24.0, "name": "Morning Run", "cal": 531.0}, {"date": "2025-11-29", "dist": 11.31, "pace": 6.08, "hr": 137.0, "elev": 61.0, "name": "Morning Run", "cal": 898.0}, {"date": "2025-11-30", "dist": 11.41, "pace": 5.87, "hr": 146.0, "elev": 71.0, "name": "Morning Run", "cal": 956.0}, {"date": "2025-12-02", "dist": 8.38, "pace": 5.03, "hr": 138.0, "elev": 27.0, "name": "Afternoon Run", "cal": 595.0}, {"date": "2025-12-03", "dist": 8.07, "pace": 5.83, "hr": 139.0, "elev": 18.0, "name": "Lunch Run", "cal": 645.0}, {"date": "2025-12-05", "dist": 6.9, "pace": 5.38, "hr": 133.0, "elev": 21.0, "name": "Afternoon Run", "cal": 508.0}, {"date": "2025-12-07", "dist": 1.12, "pace": 6.1, "hr": 126.0, "elev": 0.0, "name": "Morning Run", "cal": 88.0}, {"date": "2025-12-07", "dist": 12.64, "pace": 5.88, "hr": 145.0, "elev": 38.0, "name": "Morning Run", "cal": 1069.0}, {"date": "2025-12-07", "dist": 1.24, "pace": 6.22, "hr": 146.0, "elev": 3.0, "name": "Lunch Run", "cal": 108.0}, {"date": "2025-12-08", "dist": 3.55, "pace": 7.01, "hr": 123.0, "elev": 14.0, "name": "Lunch Run", "cal": 285.0}, {"date": "2025-12-21", "dist": 6.42, "pace": 5.79, "hr": 133.0, "elev": 28.0, "name": "Morning Run", "cal": 509.0}, {"date": "2025-12-28", "dist": 8.79, "pace": 5.91, "hr": 139.0, "elev": 63.0, "name": "Morning Run", "cal": 717.0}, {"date": "2026-01-04", "dist": 11.45, "pace": 5.81, "hr": 144.0, "elev": 35.0, "name": "Morning Run", "cal": 926.0}, {"date": "2026-01-08", "dist": 3.37, "pace": 6.0, "hr": 121.0, "elev": 10.0, "name": "Afternoon Run", "cal": 251.0}, {"date": "2026-01-10", "dist": 5.25, "pace": 5.73, "hr": 138.0, "elev": 15.0, "name": "Morning Run", "cal": 418.0}, {"date": "2026-01-11", "dist": 2.26, "pace": 5.85, "hr": 133.0, "elev": 48.0, "name": "Morning Run", "cal": 184.0}, {"date": "2026-01-11", "dist": 7.69, "pace": 5.52, "hr": 150.0, "elev": 37.0, "name": "Morning Run", "cal": 643.0}, {"date": "2026-01-13", "dist": 5.29, "pace": 5.69, "hr": 130.0, "elev": 17.0, "name": "Afternoon Run", "cal": 411.0}, {"date": "2026-01-14", "dist": 6.05, "pace": 5.77, "hr": 130.0, "elev": 16.0, "name": "Afternoon Run", "cal": 475.0}, {"date": "2026-01-16", "dist": 6.5, "pace": 6.6, "hr": 141.0, "elev": 17.0, "name": "Evening Run", "cal": 548.0}, {"date": "2026-01-17", "dist": 6.08, "pace": 5.94, "hr": 129.0, "elev": 24.0, "name": "Morning Run", "cal": 487.0}, {"date": "2026-01-18", "dist": 10.55, "pace": 5.79, "hr": 141.0, "elev": 30.0, "name": "Morning Run", "cal": 887.0}, {"date": "2026-01-20", "dist": 9.12, "pace": 6.02, "hr": 133.0, "elev": 31.0, "name": "Evening Run", "cal": 726.0}, {"date": "2026-01-25", "dist": 8.45, "pace": 5.82, "hr": 141.0, "elev": 29.0, "name": "Morning Run", "cal": 700.0}, {"date": "2026-01-28", "dist": 8.71, "pace": 5.96, "hr": 125.0, "elev": 20.0, "name": "Afternoon Run", "cal": 663.0}, {"date": "2026-02-05", "dist": 5.83, "pace": 5.95, "hr": 144.0, "elev": 16.0, "name": "Afternoon Run", "cal": 491.0}, {"date": "2026-02-06", "dist": 6.2, "pace": 5.95, "hr": 144.0, "elev": 19.0, "name": "Afternoon Run", "cal": 514.0}, {"date": "2026-02-08", "dist": 9.44, "pace": 5.59, "hr": 146.0, "elev": 78.0, "name": "Morning Run", "cal": 755.0}, {"date": "2026-02-12", "dist": 5.77, "pace": 5.72, "hr": 134.0, "elev": 9.0, "name": "Morning Run", "cal": 436.0}, {"date": "2026-02-14", "dist": 8.08, "pace": 5.6, "hr": 144.0, "elev": 24.0, "name": "Morning Run", "cal": 650.0}, {"date": "2026-02-16", "dist": 6.35, "pace": 5.23, "hr": 145.0, "elev": 19.0, "name": "Lunch Run", "cal": 483.0}, {"date": "2026-02-17", "dist": 4.02, "pace": 6.14, "hr": 124.0, "elev": 8.0, "name": "Afternoon Run", "cal": 310.0}, {"date": "2026-02-18", "dist": 9.32, "pace": 6.18, "hr": 140.0, "elev": 33.0, "name": "Afternoon Run", "cal": 772.0}, {"date": "2026-02-20", "dist": 10.01, "pace": 5.88, "hr": 140.0, "elev": 42.0, "name": "Lunch Run", "cal": 801.0}, {"date": "2026-02-22", "dist": 11.75, "pace": 5.92, "hr": 141.0, "elev": 80.0, "name": "Morning Run", "cal": 964.0}, {"date": "2026-02-24", "dist": 6.14, "pace": 5.93, "hr": 136.0, "elev": 18.0, "name": "Afternoon Run", "cal": 485.0}, {"date": "2026-02-25", "dist": 7.11, "pace": 5.07, "hr": 155.0, "elev": 16.0, "name": "Afternoon Run", "cal": 557.0}, {"date": "2026-02-26", "dist": 9.44, "pace": 6.05, "hr": 138.0, "elev": 29.0, "name": "Afternoon Run", "cal": 751.0}, {"date": "2026-02-27", "dist": 8.1, "pace": 5.82, "hr": 137.0, "elev": 24.0, "name": "Afternoon Run", "cal": 640.0}, {"date": "2026-03-01", "dist": 1.14, "pace": 5.38, "hr": 141.0, "elev": 1.0, "name": "Morning Run", "cal": 86.0}, {"date": "2026-03-01", "dist": 11.33, "pace": 5.88, "hr": 144.0, "elev": 46.0, "name": "Morning Run", "cal": 925.0}, {"date": "2026-03-03", "dist": 5.32, "pace": 5.65, "hr": 142.0, "elev": 18.0, "name": "Lunch Run", "cal": 418.0}, {"date": "2026-03-04", "dist": 9.65, "pace": 5.54, "hr": 151.0, "elev": 37.0, "name": "Lunch Run", "cal": 770.0}, {"date": "2026-03-06", "dist": 8.19, "pace": 5.63, "hr": 139.0, "elev": 25.0, "name": "Afternoon Run", "cal": 623.0}, {"date": "2026-03-07", "dist": 7.04, "pace": 5.61, "hr": 140.0, "elev": 26.0, "name": "Afternoon Run", "cal": 549.0}, {"date": "2026-03-08", "dist": 12.15, "pace": 5.37, "hr": 142.0, "elev": 71.0, "name": "Morning Run", "cal": 914.0}, {"date": "2026-03-10", "dist": 8.24, "pace": 5.1, "hr": 149.0, "elev": 32.0, "name": "Afternoon Run", "cal": 624.0}, {"date": "2026-03-12", "dist": 11.28, "pace": 5.87, "hr": 140.0, "elev": 41.0, "name": "Afternoon Run", "cal": 887.0}, {"date": "2026-03-14", "dist": 6.85, "pace": 5.85, "hr": 142.0, "elev": 22.0, "name": "Lunch Run", "cal": 551.0}, {"date": "2026-03-15", "dist": 12.87, "pace": 4.83, "hr": 152.0, "elev": 42.0, "name": "Morning Run", "cal": 940.0}, {"date": "2026-03-17", "dist": 7.29, "pace": 5.08, "hr": 148.0, "elev": 20.0, "name": "Evening Run", "cal": 545.0}, {"date": "2026-03-18", "dist": 8.93, "pace": 5.94, "hr": 140.0, "elev": 28.0, "name": "Afternoon Run", "cal": 704.0}, {"date": "2026-03-21", "dist": 15.48, "pace": 5.85, "hr": 142.0, "elev": 88.0, "name": "Afternoon Run", "cal": 1193.0}], "yearly": {"2021": {"count": 8, "dist": 30.9, "elev": 75.0}, "2023": {"count": 20, "dist": 158.4, "elev": 576.0}, "2024": {"count": 80, "dist": 710.4, "elev": 2118.0}, "2025": {"count": 131, "dist": 1094.4, "elev": 4157.0}, "2026": {"count": 41, "dist": 324.1, "elev": 1241.0}}, "dow_names": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], "dow_count": [43, 28, 50, 21, 43, 38, 57], "dow_dist": [326.3, 179.0, 355.9, 132.1, 295.5, 400.2, 629.0], "hr_runs": [["2024-05-12", 127.0, 1.69], ["2024-05-13", 156.0, 8.41], ["2024-05-18", 155.0, 12.49], ["2024-05-20", 136.0, 7.88], ["2024-05-25", 149.0, 10.42], ["2024-05-27", 156.0, 7.03], ["2024-05-29", 146.0, 3.58], ["2024-05-31", 152.0, 5.17], ["2024-06-01", 137.0, 9.97], ["2024-06-03", 141.0, 5.19], ["2024-06-05", 114.0, 3.26], ["2024-06-07", 138.0, 6.77], ["2024-06-08", 107.0, 2.87], ["2024-06-10", 149.0, 3.24], ["2024-06-12", 150.0, 5.94], ["2024-06-14", 145.0, 5.27], ["2024-06-15", 136.0, 13.24], ["2024-06-17", 142.0, 7.06], ["2024-06-19", 150.0, 6.71], ["2024-06-21", 138.0, 7.11], ["2024-06-22", 149.0, 16.61], ["2024-06-24", 140.0, 8.5], ["2024-06-26", 141.0, 7.5], ["2024-06-28", 138.0, 6.79], ["2024-06-29", 142.0, 18.37], ["2024-07-01", 144.0, 9.18], ["2024-07-03", 143.0, 8.42], ["2024-07-05", 141.0, 7.58], ["2024-07-06", 139.0, 16.37], ["2024-07-08", 141.0, 8.38], ["2024-07-10", 143.0, 5.89], ["2024-07-12", 152.0, 6.78], ["2024-07-13", 155.0, 19.76], ["2024-07-15", 139.0, 9.99], ["2024-07-17", 125.0, 8.57], ["2024-07-19", 150.0, 6.77], ["2024-07-20", 135.0, 16.41], ["2024-07-22", 137.0, 8.33], ["2024-07-24", 131.0, 9.42], ["2024-07-26", 134.0, 6.8], ["2024-07-27", 146.0, 21.24], ["2024-07-29", 150.0, 10.76], ["2024-07-31", 143.0, 7.67], ["2024-08-02", 143.0, 7.66], ["2024-08-04", 142.0, 16.63], ["2024-08-05", 127.0, 8.35], ["2024-08-07", 136.0, 12.23], ["2024-08-10", 142.0, 23.03], ["2024-08-16", 134.0, 6.82], ["2024-08-18", 147.0, 13.21], ["2024-08-19", 136.0, 6.82], ["2024-08-21", 138.0, 8.78], ["2024-08-23", 148.0, 6.79], ["2024-08-25", 160.0, 9.98], ["2024-08-27", 133.0, 5.65], ["2024-08-30", 125.0, 5.19], ["2024-09-01", 153.0, 22.86], ["2024-09-02", 136.0, 11.66], ["2024-09-11", 142.0, 11.6], ["2024-09-13", 152.0, 10.02], ["2024-09-15", 150.0, 10.05], ["2024-09-17", 147.0, 5.18], ["2024-09-18", 151.0, 5.28], ["2024-09-22", 157.0, 21.51], ["2024-10-18", 136.0, 5.03], ["2024-10-24", 135.0, 5.02], ["2024-10-30", 139.0, 5.02], ["2024-10-31", 125.0, 5.03], ["2024-11-18", 134.0, 5.02], ["2025-03-16", 131.0, 5.01], ["2025-03-18", 136.0, 5.06], ["2025-04-12", 128.0, 5.02], ["2025-04-14", 141.0, 5.01], ["2025-04-23", 118.0, 5.02], ["2025-04-25", 157.0, 5.03], ["2025-04-27", 137.0, 10.01], ["2025-04-28", 161.0, 5.02], ["2025-04-30", 143.0, 5.02], ["2025-05-02", 142.0, 5.02], ["2025-05-04", 135.0, 10.01], ["2025-05-05", 131.0, 5.06], ["2025-05-08", 131.0, 1.93], ["2025-05-10", 153.0, 5.21], ["2025-05-11", 146.0, 8.44], ["2025-05-12", 149.0, 4.44], ["2025-05-15", 129.0, 3.6], ["2025-05-16", 147.0, 5.19], ["2025-05-17", 145.0, 9.94], ["2025-05-19", 130.0, 5.21], ["2025-05-21", 130.0, 3.6], ["2025-05-23", 154.0, 5.21], ["2025-05-24", 151.0, 10.08], ["2025-05-26", 143.0, 5.2], ["2025-05-28", 156.0, 5.02], ["2025-05-30", 155.0, 5.56], ["2025-05-31", 147.0, 10.48], ["2025-06-02", 146.0, 5.59], ["2025-06-04", 155.0, 5.6], ["2025-06-05", 149.0, 7.07], ["2025-06-08", 152.0, 13.43], ["2025-06-10", 148.0, 7.27], ["2025-06-11", 141.0, 4.25], ["2025-06-13", 150.0, 5.6], ["2025-06-15", 160.0, 10.45], ["2025-06-17", 158.0, 5.64], ["2025-06-18", 149.0, 3.3], ["2025-06-20", 154.0, 7.21], ["2025-06-22", 159.0, 13.57], ["2025-06-23", 141.0, 7.14], ["2025-06-25", 136.0, 2.88], ["2025-06-27", 149.0, 7.19], ["2025-06-29", 160.0, 16.81], ["2025-07-01", 148.0, 8.76], ["2025-07-02", 156.0, 6.4], ["2025-07-04", 150.0, 5.62], ["2025-07-05", 155.0, 13.62], ["2025-07-07", 132.0, 7.17], ["2025-07-09", 158.0, 7.18], ["2025-07-11", 153.0, 7.23], ["2025-07-13", 147.0, 16.71], ["2025-07-14", 144.0, 8.76], ["2025-07-16", 156.0, 9.12], ["2025-07-18", 142.0, 7.22], ["2025-07-20", 150.0, 18.4], ["2025-07-21", 150.0, 9.6], ["2025-07-23", 156.0, 10.59], ["2025-07-25", 143.0, 7.98], ["2025-07-27", 153.0, 16.72], ["2025-07-29", 161.0, 8.89], ["2025-07-31", 133.0, 6.9], ["2025-08-01", 136.0, 7.13], ["2025-08-04", 139.0, 20.04], ["2025-08-06", 153.0, 10.43], ["2025-08-08", 136.0, 7.15], ["2025-08-09", 142.0, 16.57], ["2025-08-11", 158.0, 8.81], ["2025-08-18", 123.0, 11.29], ["2025-08-19", 148.0, 7.96], ["2025-08-22", 141.0, 7.18], ["2025-08-24", 141.0, 23.21], ["2025-08-25", 153.0, 12.1], ["2025-08-27", 152.0, 16.0], ["2025-08-28", 157.0, 14.68], ["2025-08-29", 132.0, 7.19], ["2025-08-31", 137.0, 13.52], ["2025-09-01", 155.0, 7.2], ["2025-09-03", 150.0, 9.92], ["2025-09-06", 141.0, 7.24], ["2025-09-07", 147.0, 10.48], ["2025-09-08", 134.0, 5.67], ["2025-09-10", 152.0, 5.48], ["2025-09-12", 143.0, 10.39], ["2025-09-13", 145.0, 10.39], ["2025-09-15", 157.0, 5.74], ["2025-09-17", 138.0, 5.46], ["2025-09-21", 167.0, 21.26], ["2025-09-24", 145.0, 7.5], ["2025-09-26", 151.0, 9.48], ["2025-09-27", 144.0, 6.85], ["2025-09-28", 143.0, 15.67], ["2025-09-29", 144.0, 6.85], ["2025-10-01", 141.0, 10.11], ["2025-10-02", 141.0, 6.92], ["2025-10-03", 141.0, 6.27], ["2025-10-04", 135.0, 16.66], ["2025-10-06", 139.0, 6.22], ["2025-10-07", 135.0, 8.22], ["2025-10-08", 147.0, 6.57], ["2025-10-12", 149.0, 16.02], ["2025-10-14", 142.0, 7.8], ["2025-10-15", 139.0, 8.83], ["2025-10-17", 141.0, 10.12], ["2025-10-25", 135.0, 6.44], ["2025-10-27", 139.0, 8.89], ["2025-10-28", 104.0, 6.04], ["2025-11-02", 133.0, 9.99], ["2025-11-06", 133.0, 5.04], ["2025-11-09", 131.0, 5.02], ["2025-11-10", 136.0, 5.03], ["2025-11-12", 142.0, 6.4], ["2025-11-15", 118.0, 9.98], ["2025-11-16", 134.0, 5.03], ["2025-11-18", 154.0, 7.0], ["2025-11-19", 135.0, 6.13], ["2025-11-20", 133.0, 5.15], ["2025-11-23", 139.0, 15.25], ["2025-11-25", 140.0, 6.08], ["2025-11-27", 136.0, 8.72], ["2025-11-28", 143.0, 6.49], ["2025-11-29", 137.0, 11.31], ["2025-11-30", 146.0, 11.41], ["2025-12-02", 138.0, 8.38], ["2025-12-03", 139.0, 8.07], ["2025-12-05", 133.0, 6.9], ["2025-12-07", 126.0, 1.12], ["2025-12-07", 145.0, 12.64], ["2025-12-07", 146.0, 1.24], ["2025-12-08", 123.0, 3.55], ["2025-12-21", 133.0, 6.42], ["2025-12-28", 139.0, 8.79], ["2026-01-04", 144.0, 11.45], ["2026-01-08", 121.0, 3.37], ["2026-01-10", 138.0, 5.25], ["2026-01-11", 133.0, 2.26], ["2026-01-11", 150.0, 7.69], ["2026-01-13", 130.0, 5.29], ["2026-01-14", 130.0, 6.05], ["2026-01-16", 141.0, 6.5], ["2026-01-17", 129.0, 6.08], ["2026-01-18", 141.0, 10.55], ["2026-01-20", 133.0, 9.12], ["2026-01-25", 141.0, 8.45], ["2026-01-28", 125.0, 8.71], ["2026-02-05", 144.0, 5.83], ["2026-02-06", 144.0, 6.2], ["2026-02-08", 146.0, 9.44], ["2026-02-12", 134.0, 5.77], ["2026-02-14", 144.0, 8.08], ["2026-02-16", 145.0, 6.35], ["2026-02-17", 124.0, 4.02], ["2026-02-18", 140.0, 9.32], ["2026-02-20", 140.0, 10.01], ["2026-02-22", 141.0, 11.75], ["2026-02-24", 136.0, 6.14], ["2026-02-25", 155.0, 7.11], ["2026-02-26", 138.0, 9.44], ["2026-02-27", 137.0, 8.1], ["2026-03-01", 141.0, 1.14], ["2026-03-01", 144.0, 11.33], ["2026-03-03", 142.0, 5.32], ["2026-03-04", 151.0, 9.65], ["2026-03-06", 139.0, 8.19], ["2026-03-07", 140.0, 7.04], ["2026-03-08", 142.0, 12.15], ["2026-03-10", 149.0, 8.24], ["2026-03-12", 140.0, 11.28], ["2026-03-14", 142.0, 6.85], ["2026-03-15", 152.0, 12.87], ["2026-03-17", 148.0, 7.29], ["2026-03-18", 140.0, 8.93], ["2026-03-21", 142.0, 15.48]], "stats": {"total_dist": 2318.1, "total_runs": 280, "total_elev": 8167.0, "longest_dist": 23.21, "longest_date": "2025-08-24", "best_pace": 4.33, "best_pace_date": "2025-09-15", "best_pace_fmt": "4:19", "avg_dist": 8.28, "pb_pace": {"2023": {"raw": 5.95, "fmt": "5:57"}, "2024": {"raw": 4.65, "fmt": "4:39"}, "2025": {"raw": 4.33, "fmt": "4:19"}, "2026": {"raw": 4.83, "fmt": "4:49"}}, "pb_long": {"2021": 4.72, "2023": 22.84, "2024": 23.03, "2025": 23.21, "2026": 15.48}}};
+
+const ORANGE = '#fc4c02';
+const ORANGE_LIGHT = 'rgba(252,76,2,0.15)';
+const ORANGE_MED = 'rgba(252,76,2,0.6)';
+const BLUE = '#4c9afc';
+const BLUE_LIGHT = 'rgba(76,154,252,0.2)';
+const GREEN = '#2ecc71';
+
+Chart.defaults.color = '#888';
+Chart.defaults.borderColor = '#2a2a38';
+
+let currentYear = 'all';
+let charts = {};
+
+function fmt_pace(p) {
+  const m = Math.floor(p);
+  const s = Math.round((p - m) * 60);
+  return `${m}:${s.toString().padStart(2,'0')}`;
+}
+
+function filteredScatter() {
+  if (currentYear === 'all') return RAW.scatter;
+  return RAW.scatter.filter(r => r.date.startsWith(currentYear.toString()));
+}
+
+function filteredMonthly() {
+  let months = RAW.months;
+  let dist = RAW.month_dist;
+  let count = RAW.month_count;
+  let elev = RAW.month_elev;
+  if (currentYear !== 'all') {
+    const prefix = currentYear.toString();
+    const idxs = months.map((m,i) => m.startsWith(prefix) ? i : -1).filter(i => i >= 0);
+    months = idxs.map(i => months[i]);
+    dist = idxs.map(i => dist[i]);
+    count = idxs.map(i => count[i]);
+    elev = idxs.map(i => elev[i]);
+  }
+  return {months, dist, count, elev};
+}
+
+function makeMonthLabel(m) {
+  const [y, mo] = m.split('-');
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return names[parseInt(mo)-1] + " '" + y.slice(2);
+}
+
+// Stat cards
+function buildStats() {
+  const sc = filteredScatter();
+  const fm = filteredMonthly();
+  const totalDist = sc.reduce((a,r) => a+r.dist, 0);
+  const totalRuns = sc.length;
+  const maxDist = sc.length ? Math.max(...sc.map(r=>r.dist)) : 0;
+  const validPace = sc.filter(r => r.dist > 5 && r.pace > 0);
+  const bestPace = validPace.length ? Math.min(...validPace.map(r=>r.pace)) : 0;
+  const totalElev = sc.reduce((a,r) => a+r.elev, 0);
+  const avgDist = totalRuns ? totalDist/totalRuns : 0;
+
+  const stats = [
+    {value: totalRuns, label: 'Total Runs', sub: ''},
+    {value: totalDist.toFixed(0) + ' km', label: 'Total Distance', sub: ''},
+    {value: totalElev.toFixed(0) + ' m', label: 'Elevation Gained', sub: ''},
+    {value: maxDist.toFixed(1) + ' km', label: 'Longest Run', sub: ''},
+    {value: bestPace ? fmt_pace(bestPace) + '/km' : '—', label: 'Best Pace (>5km)', sub: ''},
+    {value: avgDist.toFixed(1) + ' km', label: 'Avg Run Distance', sub: ''},
+  ];
+
+  document.getElementById('stats-grid').innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="value">${s.value}</div>
+      <div class="label">${s.label}</div>
+      ${s.sub ? `<div class="sub">${s.sub}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function buildMonthlyChart() {
+  const {months, dist, count} = filteredMonthly();
+  const labels = months.map(makeMonthLabel);
+  const ctx = document.getElementById('monthlyChart').getContext('2d');
+  if (charts.monthly) charts.monthly.destroy();
+  charts.monthly = new Chart(ctx, {
+    data: {
+      labels,
+      datasets: [
+        { type:'bar', label:'Distance (km)', data: dist, backgroundColor: ORANGE_MED, yAxisID:'y', borderRadius: 4 },
+        { type:'line', label:'Runs', data: count, borderColor: BLUE, backgroundColor: BLUE_LIGHT, yAxisID:'y2', tension:0.4, pointRadius:3, fill:false }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{color:'#aaa',font:{size:11}}}},
+      scales:{
+        y:{title:{display:true,text:'km',color:'#666'},grid:{color:'#1e1e2a'},ticks:{color:'#666'}},
+        y2:{position:'right',title:{display:true,text:'runs',color:'#666'},grid:{display:false},ticks:{color:'#666'}}
+      }
+    }
+  });
+}
+
+function buildPaceChart() {
+  const sc = filteredScatter().filter(r => r.dist > 1 && r.pace > 0 && r.pace < 12);
+  sc.sort((a,b) => a.date.localeCompare(b.date));
+  // 10-run rolling avg
+  const rolling = sc.map((r,i) => {
+    const window = sc.slice(Math.max(0, i-9), i+1);
+    return window.reduce((a,x) => a+x.pace, 0) / window.length;
+  });
+  const ctx = document.getElementById('paceChart').getContext('2d');
+  if (charts.pace) charts.pace.destroy();
+  charts.pace = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: sc.map(r => r.date),
+      datasets:[
+        {label:'Pace (min/km)', data:sc.map(r=>r.pace), borderColor:'rgba(252,76,2,0.3)', pointRadius:2, tension:0.2, fill:false, borderWidth:1},
+        {label:'10-run avg', data:rolling, borderColor:ORANGE, pointRadius:0, tension:0.4, fill:false, borderWidth:2.5}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#aaa',font:{size:11}}},
+        tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${fmt_pace(ctx.raw)}/km`}}
+      },
+      scales:{
+        y:{reverse:true,title:{display:true,text:'min/km (lower = faster)',color:'#666'},grid:{color:'#1e1e2a'},ticks:{color:'#666',callback:v=>fmt_pace(v)}},
+        x:{ticks:{color:'#666',maxTicksLimit:8}}
+      }
+    }
+  });
+}
+
+function buildHRChart() {
+  let pts = RAW.hr_runs.filter(r => r[1] > 0);
+  if (currentYear !== 'all') pts = pts.filter(r => r[0].startsWith(currentYear.toString()));
+  pts.sort((a,b) => a[0].localeCompare(b[0]));
+  const rolling = pts.map((r,i) => {
+    const w = pts.slice(Math.max(0,i-9),i+1);
+    return w.reduce((a,x)=>a+x[1],0)/w.length;
+  });
+  const ctx = document.getElementById('hrChart').getContext('2d');
+  if (charts.hr) charts.hr.destroy();
+  charts.hr = new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:pts.map(r=>r[0]),
+      datasets:[
+        {label:'Avg HR', data:pts.map(r=>r[1]), borderColor:'rgba(231,76,60,0.3)', pointRadius:2, fill:false, borderWidth:1},
+        {label:'10-run avg', data:rolling, borderColor:'#e74c3c', pointRadius:0, tension:0.4, fill:false, borderWidth:2.5}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#aaa',font:{size:11}}}},
+      scales:{
+        y:{title:{display:true,text:'BPM',color:'#666'},grid:{color:'#1e1e2a'},ticks:{color:'#666'}},
+        x:{ticks:{color:'#666',maxTicksLimit:8}}
+      }
+    }
+  });
+}
+
+function buildDowChart() {
+  const sc = filteredScatter();
+  const dow_c = new Array(7).fill(0);
+  const dow_d = new Array(7).fill(0);
+  sc.forEach(r => {
+    const d = new Date(r.date).getUTCDay(); // 0=Sun
+    const mapped = (d+6)%7; // Mon=0
+    dow_c[mapped]++;
+    dow_d[mapped] += r.dist;
+  });
+  const ctx = document.getElementById('dowChart').getContext('2d');
+  if (charts.dow) charts.dow.destroy();
+  charts.dow = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:RAW.dow_names,
+      datasets:[
+        {label:'Runs', data:dow_c, backgroundColor:ORANGE_MED, borderRadius:4, yAxisID:'y'},
+        {label:'Distance (km)', data:dow_d.map(d=>Math.round(d)), backgroundColor:BLUE_LIGHT, borderColor:BLUE, borderWidth:1, borderRadius:4, yAxisID:'y2'}
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#aaa',font:{size:11}}}},
+      scales:{
+        y:{title:{display:true,text:'runs',color:'#666'},grid:{color:'#1e1e2a'},ticks:{color:'#666'}},
+        y2:{position:'right',title:{display:true,text:'km',color:'#666'},grid:{display:false},ticks:{color:'#666'}}
+      }
+    }
+  });
+}
+
+function buildDistChart() {
+  const sc = filteredScatter();
+  const buckets = {'0–5 km':0,'5–10 km':0,'10–15 km':0,'15–20 km':0,'20+ km':0};
+  sc.forEach(r => {
+    if (r.dist < 5) buckets['0–5 km']++;
+    else if (r.dist < 10) buckets['5–10 km']++;
+    else if (r.dist < 15) buckets['10–15 km']++;
+    else if (r.dist < 20) buckets['15–20 km']++;
+    else buckets['20+ km']++;
+  });
+  const ctx = document.getElementById('distChart').getContext('2d');
+  if (charts.dist) charts.dist.destroy();
+  charts.dist = new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:Object.keys(buckets),
+      datasets:[{data:Object.values(buckets), backgroundColor:['#2ecc71','#27ae60','#fc4c02','#e03a00','#c0392b'], borderWidth:0, hoverOffset:6}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{color:'#aaa',font:{size:11},padding:12}}}
+    }
+  });
+}
+
+function buildElevChart() {
+  const {months, elev} = filteredMonthly();
+  const ctx = document.getElementById('elevChart').getContext('2d');
+  if (charts.elev) charts.elev.destroy();
+  charts.elev = new Chart(ctx,{
+    type:'bar',
+    data:{
+      labels:months.map(makeMonthLabel),
+      datasets:[{label:'Elevation (m)', data:elev, backgroundColor:'rgba(46,204,113,0.5)', borderColor:'#2ecc71', borderWidth:1, borderRadius:4}]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{color:'#aaa',font:{size:11}}}},
+      scales:{
+        y:{title:{display:true,text:'metres',color:'#666'},grid:{color:'#1e1e2a'},ticks:{color:'#666'}},
+        x:{ticks:{color:'#666',maxTicksLimit:12}}
+      }
+    }
+  });
+}
+
+function buildPBTable() {
+  const pb = RAW.stats.pb_pace;
+  const pl = RAW.stats.pb_long;
+  const years = Object.keys(pb).sort();
+  let rows = `<tr><th>Year</th><th>Best Pace (>5km)</th><th>Longest Run</th></tr>`;
+  years.forEach(y => {
+    rows += `<tr>
+      <td>${y}</td>
+      <td class="highlight">${pb[y] ? pb[y].fmt : '—'} /km</td>
+      <td class="highlight">${pl[y] ? pl[y] + ' km' : '—'}</td>
+    </tr>`;
+  });
+  document.getElementById('pbTable').innerHTML = rows;
+}
+
+function setYear(y) {
+  currentYear = y;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent.trim() === (y === 'all' ? 'All Time' : y.toString()));
+  });
+  buildAll();
+}
+
+function buildAll() {
+  buildStats();
+  buildMonthlyChart();
+  buildPaceChart();
+  buildHRChart();
+  buildDowChart();
+  buildDistChart();
+  buildElevChart();
+  buildPBTable();
+}
+
+buildAll();
+</script>
+</body>
+</html>

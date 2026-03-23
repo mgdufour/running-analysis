@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Python/cache
+__pycache__/
+*.pyc
+
+# Local exports and heavy raw data
+Garmin Data/
+Strava Data/
+artifacts/
+reports/
+
